@@ -1,0 +1,13 @@
+# Valores de referencia para desplegar la Azure Function
+# Duplica este archivo como terraform.tfvars y ajusta los valores según tu entorno.
+
+name_function = "demo-func"
+location      = "westeurope"
+allowed_origins = [
+  "https://example.com",
+  "http://localhost:3000",
+]
+tags = {
+  environment = "dev"
+  owner       = "team-devops"
+}
