@@ -15,7 +15,6 @@ La solución crea y relaciona automáticamente:
 1. [Instalar Terraform](https://developer.hashicorp.com/terraform/downloads) `>= 1.4.0`.
 2. [Instalar Azure CLI](https://learn.microsoft.com/es-es/cli/azure/install-azure-cli).
 3. Iniciar sesión en Azure con `az login` y seleccionar la suscripción correcta con `az account set --subscription "<SUBSCRIPTION_ID>"`.
-4. *(Opcional)* Si usas GitHub Codespaces y ves que se inicia en **Recovery Container**, ejecuta el comando **Codespaces: Rebuild Container** una vez aplicados los cambios del archivo `.devcontainer/devcontainer.json`.
 
 ## Variables de entrada
 

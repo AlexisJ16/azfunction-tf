@@ -72,7 +72,7 @@ resource "azurerm_windows_function_app" "wfa" {
 
   app_settings = {
     FUNCTIONS_WORKER_RUNTIME = "node"
-    WEBSITE_RUN_FROM_PACKAGE = "1"
+    WEBSITE_RUN_FROM_PACKAGE = "0"
   }
 
   identity {
