@@ -84,7 +84,7 @@ resource "azurerm_windows_function_app" "wfa" {
 resource "azurerm_function_app_function" "faf" {
   name            = local.function_name
   function_app_id = azurerm_windows_function_app.wfa.id
-  language        = "JavaScript"
+  language        = "Javascript"
 
   file {
     name    = "index.js"
