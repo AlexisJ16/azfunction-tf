@@ -1,84 +1,114 @@
-# Definición del provider que ocuparemos
 provider "azurerm" {
   features {}
 }
 
-# Se crea el grupo de recursos, al cual se asociarán los demás recursos
-resource "azurerm_resource_group" "rg" {
-  name     = var.name_function
-  location = var.location
+resource "random_integer" "suffix" {
+  min = 10000
+  max = 99999
 }
 
-# Se crea un Storage Account, para asociarlo al function app (recomendación de la documentación).
+locals {
+  base_name             = lower(replace(var.name_function, "[^0-9a-zA-Z]", ""))
+  suffix                = random_integer.suffix.result
+  resource_group_name   = "${var.name_function}-rg-${local.suffix}"
+  service_plan_name     = "${var.name_function}-plan-${local.suffix}"
+  function_app_name     = "${var.name_function}-fa-${local.suffix}"
+  function_name         = "${var.name_function}-http"
+  storage_account_name  = substr(lower(replace("${local.base_name}${local.suffix}", "[^0-9a-z]", "")), 0, 24)
+  storage_container_name = "functions"
+}
+
+resource "azurerm_resource_group" "rg" {
+  name     = local.resource_group_name
+  location = var.location
+  tags     = var.tags
+}
+
 resource "azurerm_storage_account" "sa" {
-  name                     = var.name_function
+  name                     = local.storage_account_name
   resource_group_name      = azurerm_resource_group.rg.name
   location                 = azurerm_resource_group.rg.location
   account_tier             = "Standard"
   account_replication_type = "LRS"
+  min_tls_version          = "TLS1_2"
+
+  tags = var.tags
 }
 
-# Se crea el recurso Service Plan para especificar el nivel de servicio 
-# (por ejemplo, "Consumo", "Functions Premium" o "Plan de App Service"), en este caso "Y1" hace referencia a plan consumo 
+resource "azurerm_storage_container" "code" {
+  name                  = local.storage_container_name
+  storage_account_name  = azurerm_storage_account.sa.name
+  container_access_type = "private"
+}
+
 resource "azurerm_service_plan" "sp" {
-  name                = var.name_function
+  name                = local.service_plan_name
   resource_group_name = azurerm_resource_group.rg.name
   location            = azurerm_resource_group.rg.location
   os_type             = "Windows"
   sku_name            = "Y1"
+
+  tags = var.tags
 }
 
-# Se crea la aplicación de Funciones 
 resource "azurerm_windows_function_app" "wfa" {
-  name                = var.name_function
-  resource_group_name = azurerm_resource_group.rg.name
-  location            = azurerm_resource_group.rg.location
-
+  name                       = local.function_app_name
+  resource_group_name        = azurerm_resource_group.rg.name
+  location                   = azurerm_resource_group.rg.location
   storage_account_name       = azurerm_storage_account.sa.name
   storage_account_access_key = azurerm_storage_account.sa.primary_access_key
   service_plan_id            = azurerm_service_plan.sp.id
+  functions_extension_version = "~4"
 
   site_config {
     application_stack {
       node_version = "~18"
     }
+    cors {
+      allowed_origins     = var.allowed_origins
+      support_credentials = false
+    }
   }
+
+  app_settings = {
+    FUNCTIONS_WORKER_RUNTIME = "node"
+  }
+
+  identity {
+    type = "SystemAssigned"
+  }
+
+  tags = var.tags
 }
 
-# Se crea una función dentro de la aplicación de funciones
 resource "azurerm_function_app_function" "faf" {
-  name            = var.name_function
+  name            = local.function_name
   function_app_id = azurerm_windows_function_app.wfa.id
-  language        = "Javascript"
-  # Se carga el código de ejemplo dentro de la función
+  language        = "JavaScript"
+
   file {
     name    = "index.js"
     content = file("example/index.js")
   }
-  # Se define el payload para los test
+
   test_data = jsonencode({
-    "name" = "Azure"
+    name = "Azure"
   })
-  # Se mapean las solicitudes
+
   config_json = jsonencode({
-    "bindings" : [
+    bindings = [
       {
-        "authLevel" : "anonymous",
-        "type" : "httpTrigger",
-        "direction" : "in",
-        "name" : "req",
-        "methods" : [
-          "get",
-          "post"
-        ]
+        authLevel = "anonymous"
+        type      = "httpTrigger"
+        direction = "in"
+        name      = "req"
+        methods   = ["get", "post"]
       },
       {
-        "type" : "http",
-        "direction" : "out",
-        "name" : "res"
+        type      = "http"
+        direction = "out"
+        name      = "res"
       }
     ]
   })
 }
-
-

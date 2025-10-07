@@ -8,10 +8,9 @@
     },
     "ghcr.io/devcontainers/features/azure-cli:1": {},
     "ghcr.io/devcontainers/features/terraform:1": {},
-    "ghcr.io/devcontainers/features/jq:1": {},
     "ghcr.io/devcontainers/features/make:1": {}
   },
-  "postCreateCommand": "terraform -v && az --version && jq --version && make --version && az bicep install -y || true",
+  "postCreateCommand": "bash -lc 'set -euo pipefail && sudo apt-get update && DEBIAN_FRONTEND=noninteractive sudo apt-get install -y jq && terraform -v && az --version && jq --version && make --version && (az bicep install -y || true)'",
   "customizations": {
     "vscode": {
       "extensions": [
