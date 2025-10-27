@@ -205,6 +205,3 @@ export ARM_TENANT_ID="<TENANT_ID>"
 - Plan: Consumo (`sku_name = "Y1"`).
 - Salidas: `url` corresponde a la `invocation_url` de la función.
 
----
-
-¡Listo! Con estos pasos puedes aplicar, validar con curl (y tomar tus capturas), y destruir al final para no generar costos.
