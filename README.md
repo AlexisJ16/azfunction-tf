@@ -141,6 +141,9 @@ Respuesta esperada:
 {"id":"Terraform"}
 ```
 
+<img width="1465" height="316" alt="image" src="https://github.com/user-attachments/assets/a929afae-f84d-4748-bed0-806b7e7bcbae" />
+
+
 ## Verificación en Azure Portal (opcional)
 
 - Resource Groups: https://portal.azure.com/#view/HubsExtension/BrowseResourceGroups
