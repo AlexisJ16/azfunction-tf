@@ -1,17 +1,37 @@
 # Definición del provider que ocuparemos
 provider "azurerm" {
   features {}
+  # Declarar explícitamente la suscripción puede resolver problemas cuando el provider
+  # no detecta el contexto de Azure CLI dentro de contenedores o sesiones no estándar.
+  subscription_id = var.subscription_id
+}
+
+# Genera un sufijo aleatorio para garantizar nombres únicos en recursos globales (e.g. Function App/Storage Account)
+resource "random_string" "suffix" {
+  length  = 5
+  upper   = false
+  lower   = true
+  numeric = true
+  special = false
+}
+
+locals {
+  # Normaliza el nombre base a minúsculas
+  base_name = lower(var.name_function)
+  unique    = "${local.base_name}${random_string.suffix.result}"
+  # Restricción de Storage Account: 3-24 chars, solo alfanumérico minúscula
+  storage_account_name = substr(local.unique, 0, 24)
 }
 
 # Se crea el grupo de recursos, al cual se asociarán los demás recursos
 resource "azurerm_resource_group" "rg" {
-  name     = var.name_function
+  name     = local.unique
   location = var.location
 }
 
 # Se crea un Storage Account, para asociarlo al function app (recomendación de la documentación).
 resource "azurerm_storage_account" "sa" {
-  name                     = var.name_function
+  name                     = local.storage_account_name
   resource_group_name      = azurerm_resource_group.rg.name
   location                 = azurerm_resource_group.rg.location
   account_tier             = "Standard"
@@ -21,7 +41,7 @@ resource "azurerm_storage_account" "sa" {
 # Se crea el recurso Service Plan para especificar el nivel de servicio 
 # (por ejemplo, "Consumo", "Functions Premium" o "Plan de App Service"), en este caso "Y1" hace referencia a plan consumo 
 resource "azurerm_service_plan" "sp" {
-  name                = var.name_function
+  name                = local.unique
   resource_group_name = azurerm_resource_group.rg.name
   location            = azurerm_resource_group.rg.location
   os_type             = "Windows"
@@ -30,7 +50,7 @@ resource "azurerm_service_plan" "sp" {
 
 # Se crea la aplicación de Funciones 
 resource "azurerm_windows_function_app" "wfa" {
-  name                = var.name_function
+  name                = local.unique
   resource_group_name = azurerm_resource_group.rg.name
   location            = azurerm_resource_group.rg.location
 
@@ -47,7 +67,7 @@ resource "azurerm_windows_function_app" "wfa" {
 
 # Se crea una función dentro de la aplicación de funciones
 resource "azurerm_function_app_function" "faf" {
-  name            = var.name_function
+  name            = "${local.unique}fn"
   function_app_id = azurerm_windows_function_app.wfa.id
   language        = "Javascript"
   # Se carga el código de ejemplo dentro de la función

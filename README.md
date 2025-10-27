@@ -1,146 +1,210 @@
-### **Infraestructura como código**
+## Azure Function HTTP con Terraform (Node.js)
 
-- **Utilizar archivos de definición**: Todas las herramientas de infraestructura como código tienen un formato propio para definir la infraestructura.
-- **Autodocumentación de procesos y sistemas**: Al utilizar el enfoque de infraestructura como código, podemos reutilizar el código. Es importante que este esté documentado adecuadamente para que otros usuarios comprendan el propósito y funcionamiento del módulo.
-- **Versionar todo**: Esto nos permite rastrear los cambios realizados. Si se comete un error, podemos retroceder a una versión estable.
-- **Preferir cambios pequeños**: Realizar cambios pequeños para evitar grandes impactos.
-- **Mantener los servicios continuamente disponibles**: Garantizar la disponibilidad continua es clave en la infraestructura.
+Este proyecto despliega una Azure Function (HTTP trigger) en un Plan de Consumo usando Terraform y Node.js 18. Incluye todo para aplicar, probar con curl y destruir la infraestructura cuando termines.
 
-### **Beneficios de la infraestructura como código**
+## Arquitectura creada
 
-- **Creación rápida y bajo demanda**: Con un único archivo de definición de infraestructura que almacena todas nuestras configuraciones, podemos crear múltiples veces la infraestructura sin necesidad de rehacer todo desde el principio.
-- **Automatización**: Una vez creado el archivo de definición, podemos usar herramientas de **continuous integration** para automatizar la infraestructura.
-- **Visibilidad y trazabilidad**: El versionamiento de la infraestructura como código permite una mayor visibilidad y trazabilidad, ya que todos los cambios quedan registrados.
-- **Ambientes homogéneos**: Podemos crear varios ambientes a partir del mismo archivo de definición, cambiando únicamente algunos parámetros.
+- Resource Group
+- Storage Account (requerido por Azure Functions)
+- App Service Plan (Y1 Consumo)
+- Windows Function App (Functions v4 + Node.js ~18)
+- Function HTTP (trigger GET/POST, authLevel: anonymous)
+
+## Requisitos previos
+
+- Terraform 1.6+ (o superior)
+- Azure CLI 2.50+ (o superior)
+- Acceso a una suscripción de Azure con rol Contributor
+
+Verifica herramientas instaladas:
+
+```bash
+terraform -version
+az version
+```
+
+Inicia sesión en Azure y selecciona la suscripción:
+
+```bash
+az login
+az account list --output table
+az account set --subscription <SUBSCRIPTION_ID>
+```
+
+## Estructura del repo
+
+```
+main.tf
+variables.tf
+outputs.tf
+terraform.tfvars         # valores locales (git-ignored)
+example/
+  index.js               # código de la función HTTP (Node.js)
+```
+
+## Configuración
+
+Variables expuestas en `variables.tf`:
+
+- `name_function` (string): base del nombre de los recursos.
+- `location` (string): región de Azure. Por defecto "West Europe"; recomendado para Colombia: "Brazil South".
+- `subscription_id` (string, opcional): ID de suscripción. Si no lo pones, el provider intentará usar el contexto de `az login`.
+
+Importante sobre los nombres:
+
+- Los nombres de Function App y Storage Account deben ser únicos globalmente y en minúsculas. Este proyecto genera automáticamente un sufijo aleatorio para evitar colisiones y cumplir restricciones. Tu `name_function` se usa como base.
+
+Ejemplo de `terraform.tfvars` (recomendado para Colombia):
+
+```hcl
+name_function   = "myfunctionapp12345"
+location        = "Brazil South"
+subscription_id = "<TU_SUBSCRIPTION_ID>"
+```
+
+> Sugerencia: deja `subscription_id` explícito para evitar problemas de contexto dentro de contenedores.
+
+## Despliegue
+
+Inicializa y valida:
+
+```bash
+terraform init -upgrade
+terraform validate
+```
+
+Previsualiza cambios:
+
+```bash
+terraform plan -var-file="terraform.tfvars"
+```
+
+Aplica la infraestructura:
+
+```bash
+terraform apply -var-file="terraform.tfvars"
+```
+
+Al finalizar, obtén la URL de la función:
+
+```bash
+terraform output -raw url
+```
+
+Ejemplo de salida:
+
+```
+https://<functionapp-unico>.azurewebsites.net/api/<function-name>
+```
+
+## Pruebas de funcionamiento
+
+Guarda la URL en una variable local opcionalmente:
+
+```bash
+URL=$(terraform output -raw url)
+```
+
+1) GET sin parámetros (mensaje por defecto):
+
+```bash
+curl -i "$URL"
+```
+
+Respuesta esperada (200 + JSON):
+
+```json
+{"message":"This HTTP triggered function executed successfully. Pass a name in the query string or in the request body for a personalized response."}
+```
+
+2) GET con parámetro `name`:
+
+```bash
+curl -s "$URL?name=Colombia"
+```
+
+Respuesta esperada:
+
+```json
+{"id":"Colombia"}
+```
+
+3) POST con JSON:
+
+```bash
+curl -s -X POST "$URL" -H "Content-Type: application/json" -d '{"name":"Terraform"}'
+```
+
+Respuesta esperada:
+
+```json
+{"id":"Terraform"}
+```
+
+## Verificación en Azure Portal (opcional)
+
+- Resource Groups: https://portal.azure.com/#view/HubsExtension/BrowseResourceGroups
+- Function App: busca el nombre mostrado en el plan/app (se agrega sufijo aleatorio automáticamente).
+
+## Modificar la función y volver a desplegar
+
+Edita `example/index.js` y vuelve a aplicar:
+
+```bash
+terraform apply -var-file="terraform.tfvars"
+```
+
+Notas:
+
+- La función expone siempre JSON y el header `Content-Type: application/json`.
+- El nombre interno de la función agrega el sufijo `fn` para evitar conflictos al recrearla.
+
+## Destruir la infraestructura (limpieza)
+
+Cuando termines y quieras evitar costos:
+
+```bash
+terraform destroy -var-file="terraform.tfvars" -auto-approve
+```
+
+## Solución de problemas
+
+1) Error: `subscription ID could not be determined and was not specified`
+
+- Asegúrate de iniciar sesión y seleccionar suscripción:
+
+```bash
+az login
+az account set --subscription <SUBSCRIPTION_ID>
+```
+
+- O define el `subscription_id` en `terraform.tfvars` (recomendado), o exporta variables de entorno antes del plan/apply:
+
+```bash
+export ARM_SUBSCRIPTION_ID="<SUBSCRIPTION_ID>"
+# Opcional si te lo pide:
+export ARM_TENANT_ID="<TENANT_ID>"
+```
+
+2) Error de nombre duplicado (Function App/Storage Account)
+
+- Este proyecto añade un sufijo aleatorio para asegurar unicidad. Si cambias esta lógica, recuerda que Storage Account debe ser 3–24 chars, solo minúsculas y números, y único global.
+
+3) Permisos insuficientes
+
+- Verifica que tu usuario tenga rol Contributor en la suscripción o grupo de recursos.
+
+4) Región
+
+- Para Colombia, "Brazil South" suele ofrecer buena latencia. Alternativas: "East US 2". Usa nombres exactos de región.
+
+## Detalles técnicos relevantes
+
+- Provider: `azurerm` con `features {}` y soporte para `subscription_id`.
+- Stack: Functions v4, Node.js `~18`.
+- Plan: Consumo (`sku_name = "Y1"`).
+- Salidas: `url` corresponde a la `invocation_url` de la función.
 
 ---
 
-### **Mejores prácticas**
-
-- **Modularidad**: Es recomendable dividir la infraestructura en módulos reutilizables para facilitar su mantenimiento y escalabilidad.
-- **Mantener las configuraciones centralizadas**: Utilizar variables y archivos de configuración para gestionar parámetros y evitar valores "hardcoded".
-- **Manejo seguro del estado**: Almacenar el archivo `terraform.tfstate` de manera remota (por ejemplo, en un bucket S3 con bloqueo de versión) para evitar problemas en equipos distribuidos.
-- **Revisiones de código y pull requests**: Antes de aplicar cambios importantes en la infraestructura, hacer revisiones mediante pull requests para asegurar que los cambios han sido revisados por otros.
-
-### **Ambientes**
-
-Terraform permite la creación de múltiples ambientes (dev, stage, prod) con diferentes configuraciones. Puedes gestionar estos ambientes utilizando archivos `.tfvars` específicos para cada entorno.
-
-- **Ambiente de desarrollo (dev)**: Se recomienda utilizar recursos más pequeños y económicos en este ambiente para reducir costos.
-- **Ambiente de producción (prod)**: Aquí es importante configurar instancias y recursos con redundancia y alta disponibilidad.
-  
-Ejemplo de estructura para gestionar ambientes:
-
-```bash
-├── main.tf
-├── variables.tf
-├── dev.tfvars
-├── prod.tfvars
-```
-
-Al aplicar los cambios para un ambiente en específico, puedes ejecutar:
-
-```bash
-terraform apply --var-file="dev.tfvars"
-```
-
-### **Automatización con CI/CD**
-
-Integrar Terraform en un flujo de CI/CD es una excelente práctica para automatizar la gestión de la infraestructura. Puedes utilizar herramientas como Jenkins, GitLab CI, o GitHub Actions para automatizar el proceso de despliegue y validación.
-
-Ejemplo de un pipeline básico en GitLab CI:
-
-```yaml
-stages:
-  - validate
-  - plan
-  - apply
-
-validate:
-  script:
-    - terraform init
-    - terraform validate
-
-plan:
-  script:
-    - terraform plan
-
-apply:
-  script:
-    - terraform apply --auto-approve
-```
-
-Este pipeline primero inicializa el entorno, luego valida la configuración, y finalmente aplica los cambios automáticamente.
-
-### **Seguridad**
-
-- **Manejo seguro de credenciales**: Nunca almacenar credenciales en el código fuente. Utilizar herramientas como **AWS Secrets Manager** o **HashiCorp Vault** para gestionar los secretos de manera segura.
-- **Control de acceso basado en roles (IAM)**: Asignar roles y permisos específicos a los recursos de Terraform mediante políticas de IAM para restringir el acceso según sea necesario.
-- **Cifrado de datos**: Utilizar cifrado en reposo y en tránsito para proteger los datos sensibles, como el uso de **KMS (Key Management Service)** de AWS.
-- **Seguridad en el estado**: Si almacenas el archivo `terraform.tfstate` en un bucket S3, asegúrate de habilitar el cifrado y el control de versiones para evitar modificaciones no autorizadas.
-
----
-
-### **Manejo de variables en Terraform**
-
-Para hacer escalable y reutilizable el archivo de definición de infraestructura, se recomienda no usar valores "hardcoded". Terraform permite crear variables de los siguientes tipos:
-
-- **string**
-- **number**
-- **boolean**
-- **map**
-- **list**
-
-Si no se declara un tipo, el valor por defecto será `string`. Sin embargo, es una buena práctica especificar el tipo de la variable.
-
-Ejemplo de definición de variables:
-
-```terraform
-variable "ami_id" {
-  type        = string
-  description = "ID de la AMI"
-}
-
-variable "instance_type" {
-  type        = string
-  description = "Tipo de instancia"
-}
-
-variable "tags" {
-  type        = map
-  description = "Etiquetas para la instancia"
-}
-```
-
-### **Asignar valores a las variables**
-
-Los valores de las variables se pueden asignar de tres maneras:
-
-1. Utilizando variables de entorno.
-2. Pasándolos como argumentos en la línea de comandos.
-3. Mediante un archivo `.tfvars` con formato `key = value`.
-
-Ejemplo de archivo `.tfvars`:
-
-```terraform
-ami_id        = "ami-0ca0c67309196175e"
-instance_type = "t2.micro"
-tags = {
-  Name       = "devops-tf"
-  Environment = "Dev"
-}
-```
-
-Para usar este archivo con variables:
-
-```bash
-terraform apply --var-file="dev.tfvars"
-```
-
-### **Destruir la infraestructura**
-
-Para eliminar la infraestructura creada, se puede utilizar:
-
-```bash
-terraform destroy --var-file="dev.tfvars" -auto-approve
-```
+¡Listo! Con estos pasos puedes aplicar, validar con curl (y tomar tus capturas), y destruir al final para no generar costos.
